@@ -1,6 +1,6 @@
 mod token;
 mod scanner;
-mod ast;
+mod parser;
 
 use std::{env};
 use std::process;
@@ -8,8 +8,9 @@ use std::io;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use token::Token;
+use token::{Token, TokenType};
 use scanner::Scanner;
+use parser::Parser;
 
 fn main() {
     let mut lox = Lox{
@@ -69,14 +70,26 @@ impl Lox {
     fn run(&self, source: String) {
         let mut scanner = Scanner::new(source);
         let tokens: Vec<Token> = scanner.scan_tokens();
-    
-        for token in tokens {
-            println!("{:?}", token);
+        let mut parser = Parser::new(tokens);
+        let expr = parser.parse();
+
+        if self.had_error || expr.is_none() {
+            return;
+        } else {
+            println!("{:?}", expr);
         }
     }
 
     fn error(line: u32, message: String) {
         Lox::report(line, "".to_owned(), message);
+    }
+
+    fn token_error(token: Token, message: String) {
+        if token.token_type == TokenType::Eof {
+            Lox::report(token.line, " at end".to_owned(), message)
+        } else {
+            Lox::report(token.line, format!("at, {}", token.lexeme), message)
+        }
     }
 
     fn report(line: u32, error: String, message: String) {
