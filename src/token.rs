@@ -40,16 +40,16 @@ impl Token {
         Token {
             token_type,
             lexeme,
-            literal: literal,
+            literal,
             line,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
-    String(String),
-    Number(f64),
     Bool(bool),
+    Number(f64),
+    String(String),
     Nil,
 }

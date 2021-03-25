@@ -1,6 +1,7 @@
 mod token;
 mod scanner;
 mod parser;
+mod interpreter;
 
 use std::{env};
 use std::process;
@@ -8,9 +9,13 @@ use std::io;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use token::{Token, TokenType};
+use interpreter::{Interpreter, RuntimeError};
+use token::{Literal, Token, TokenType};
 use scanner::Scanner;
-use parser::Parser;
+use parser::{ParseError, Parser};
+
+use lazy_static::lazy_static;
+
 
 fn main() {
     let mut lox = Lox{
@@ -20,6 +25,12 @@ fn main() {
 }
 
 static HAD_ERROR: AtomicBool = AtomicBool::new(false);
+static HAD_RUNTIME_ERROR: AtomicBool = AtomicBool::new(false);
+
+lazy_static! {
+    static ref INTERPRETER: Interpreter = Interpreter::new();
+}
+
 
 struct Lox {
     had_error: bool
@@ -46,9 +57,13 @@ impl Lox {
         let string = std::str::from_utf8(&bytes).unwrap().to_owned();
         self.run(string);
 
-        if self.had_error {
+        if HAD_ERROR.load(Ordering::Relaxed) == true {
             process::exit(64);
         }
+        if HAD_RUNTIME_ERROR.load(Ordering::Relaxed) == true {
+            process::exit(70);
+        }
+
         Ok(())
     }
 
@@ -75,25 +90,53 @@ impl Lox {
 
         if self.had_error || expr.is_none() {
             return;
-        } else {
-            println!("{:?}", expr);
         }
+
+        let l = INTERPRETER.interpret(Box::new(expr.unwrap()));
+        match l {
+            Some(l) => {
+                match l {
+                    Literal::Bool(b) => {
+                        println!("{:?}", b);
+                    },
+                    Literal::Number(n) => {
+                        println!("{:?}", n);
+                    },
+                    Literal::String(s) => {
+                        println!("{:?}", s);
+                    },
+                    Literal::Nil => {
+                        println!("Nil");
+                    }
+                }
+            },
+            None => {}
+        };
     }
 
     fn error(line: u32, message: String) {
         Lox::report(line, "".to_owned(), message);
     }
 
-    fn token_error(token: Token, message: String) {
+    fn parse_error(error: ParseError) {
+        let ParseError(token, message) = error;
+        
         if token.token_type == TokenType::Eof {
-            Lox::report(token.line, " at end".to_owned(), message)
+            Lox::report(token.line, "at end".to_owned(), message)
         } else {
             Lox::report(token.line, format!("at, {}", token.lexeme), message)
         }
     }
 
-    fn report(line: u32, error: String, message: String) {
-        println!("[line {}] Error {}: {}", line, error, message);
+    fn runtime_error(error: RuntimeError) {
+        let RuntimeError(token, message) = error;
+
+        println!("{} \n[line {}]", message, token.line);
+        HAD_RUNTIME_ERROR.store(true, Ordering::Relaxed);
+    }
+
+    fn report(line: u32, where_: String, message: String) {
+        println!("[line {}] Error {}: {}", line, where_, message);
         HAD_ERROR.store(true, Ordering::Relaxed);
     }
 }

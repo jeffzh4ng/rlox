@@ -3,10 +3,16 @@ use std::error;
 
 #[derive(Debug)]
 pub enum Expr {
+    Unary(Token, Box<Expr>),
     Binary(Box<Expr>, Token, Box<Expr>),
     Grouping(Box<Expr>),
     Literal(Literal),
-    Unary(Token, Box<Expr>),
+}
+
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
+    }    
 }
 
 pub struct Parser {
@@ -27,7 +33,8 @@ impl Parser {
             Ok(e) => {
                 Some(e)
             },
-            Err(parse_error) => {
+            Err(error) => {
+                Lox::parse_error(error);
                 None
             }
         }
@@ -53,10 +60,6 @@ impl Parser {
 
             self.advance();
         }
-    }
-
-    fn error(&self, token: Token, message: String) {
-        Lox::token_error(token, message);
     }
 
     // ======== OPERATORS ========
@@ -205,7 +208,7 @@ impl Parser {
 }
 
 #[derive(Debug)]
-struct ParseError(Token, String);
+pub struct ParseError(pub Token, pub String);
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
