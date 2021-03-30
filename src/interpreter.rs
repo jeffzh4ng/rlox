@@ -1,4 +1,4 @@
-use crate::{Lox, parser::Expr, token::{Literal, Token, TokenType}};
+use crate::{Lox, parser::{Expr, Stmt}, token::{Literal, Token, TokenType}};
 use std::error;
 
 pub struct Interpreter {}
@@ -8,14 +8,39 @@ impl Interpreter {
         Interpreter{}
     }
 
-    pub fn interpret(&self, expr: Box<Expr>) -> Option<Literal> { // function has to be method due to weird lazy static error
-        let f = Interpreter::evaluate(expr);
+    pub fn interpret(&self, stmts: Vec<Box<Stmt>>) {
+        for s in stmts {
+            self.interpret_stmt(s);
+        }
+    }
 
-        match f {
-            Ok(l) => Some(l),
-            Err(e) => {
-                Lox::runtime_error(e);
-                None
+
+    pub fn interpret_stmt(&self, expr: Box<Stmt>) -> Option<Literal> { // function has to be method due to weird lazy static error
+        match *expr {
+            Stmt::Expr(e) => {
+                let f = Interpreter::evaluate(e);
+        
+                match f {
+                    Ok(l) => Some(l),
+                    Err(e) => {
+                        Lox::runtime_error(e);
+                        None
+                    }
+                }
+            },
+            Stmt::Print(e) => {
+                let f = Interpreter::evaluate(e);
+
+                match f {
+                    Ok(l) => { 
+                        println!("{:?}", l);
+                        None
+                    },
+                    Err(e) => {
+                        Lox::runtime_error(e);
+                        None
+                    }
+                }
             }
         }
     }

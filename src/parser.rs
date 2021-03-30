@@ -9,6 +9,11 @@ pub enum Expr {
     Literal(Literal),
 }
 
+pub enum Stmt {
+    Expr(Box<Expr>),
+    Print(Box<Expr>)
+}
+
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "")
@@ -28,13 +33,64 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Option<Expr> {
-        match self.expression() {
+    pub fn parse(&mut self) -> Vec<Box<Stmt>> {
+        let mut statements = Vec::new();
+
+        while !self.at_end() {
+            match self.statement() {
+                Some(s) => statements.push(Box::new(s)),
+                None => {}
+            }
+        }
+
+        statements
+    }
+
+    fn statement(&mut self) -> Option<Stmt> {
+        if self.match_(&vec![TokenType::Print]) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Option<Stmt> {
+        let value = self.expression();
+
+        match value {
             Ok(e) => {
-                Some(e)
+                let semicolon_exists = self.consume(TokenType::SemiColon, "Expect ';' after value.".to_owned());
+                match semicolon_exists {
+                    Ok(_) => Some(Stmt::Print(Box::new(e))),
+                    Err(e) => {
+                        Lox::parse_error(e);
+                        None
+                    },
+                }
             },
-            Err(error) => {
-                Lox::parse_error(error);
+            Err(e) => {
+                Lox::parse_error(e);
+                None
+            }
+        }
+    }
+
+    fn expression_statement(&mut self) -> Option<Stmt> {
+        let expr = self.expression();
+
+        match expr {
+            Ok(e) => {
+                let semicolon_exists = self.consume(TokenType::SemiColon, "Expect ';' after expression.".to_owned());
+                match semicolon_exists {
+                    Ok(_) => Some(Stmt::Expr(Box::new(e))),
+                    Err(e) => {
+                        Lox::parse_error(e);
+                        None
+                    },
+                }
+            },
+            Err(e) => {
+                Lox::parse_error(e);
                 None
             }
         }
@@ -147,8 +203,11 @@ impl Parser {
 
         if self.match_(&vec![TokenType::LeftParen]) {
             let expr = self.expression()?;
-            self.consume(TokenType::RightParen, "Expect ')' after expression.".to_owned());
-            return Ok(Expr::Grouping(Box::new(expr)));
+            let right_paren_exists = self.consume(TokenType::RightParen, "Expect ')' after expression.".to_owned());
+            match right_paren_exists {
+                Ok(_) => return Ok(Expr::Grouping(Box::new(expr))),
+                Err(e) => return Err(e),
+            };
         }
 
         // As the parser descends through the parsing methods for each grammar rule, it eventually hits
@@ -201,9 +260,11 @@ impl Parser {
     fn consume(&mut self, token_type: TokenType, message: String) -> Result<(), ParseError> {
         if self.check(&token_type) {
             self.advance();
+            Ok(())
+        } else {
+            Err(ParseError(self.peek().clone(), message))
         }
 
-        Err(ParseError(self.peek().clone(), message))
     }
 }
 

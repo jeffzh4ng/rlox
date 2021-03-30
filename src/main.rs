@@ -86,32 +86,13 @@ impl Lox {
         let mut scanner = Scanner::new(source);
         let tokens: Vec<Token> = scanner.scan_tokens();
         let mut parser = Parser::new(tokens);
-        let expr = parser.parse();
+        let stmts = parser.parse();
 
-        if self.had_error || expr.is_none() {
+        if self.had_error {
             return;
         }
 
-        let l = INTERPRETER.interpret(Box::new(expr.unwrap()));
-        match l {
-            Some(l) => {
-                match l {
-                    Literal::Bool(b) => {
-                        println!("{:?}", b);
-                    },
-                    Literal::Number(n) => {
-                        println!("{:?}", n);
-                    },
-                    Literal::String(s) => {
-                        println!("{:?}", s);
-                    },
-                    Literal::Nil => {
-                        println!("Nil");
-                    }
-                }
-            },
-            None => {}
-        };
+        INTERPRETER.interpret(stmts);
     }
 
     fn error(line: u32, message: String) {
