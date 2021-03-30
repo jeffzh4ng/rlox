@@ -20,17 +20,6 @@ impl Interpreter {
 
     pub fn interpret_stmt(&mut self, stmt: Box<Stmt>) -> Option<Literal> { // function has to be method due to weird lazy static error
         match *stmt {
-            Stmt::Expr(e) => {
-                let f = self.evaluate(e);
-        
-                match f {
-                    Ok(l) => Some(l),
-                    Err(e) => {
-                        Lox::runtime_error(e);
-                        None
-                    }
-                }
-            },
             Stmt::Print(e) => {
                 let f = self.evaluate(e);
 
@@ -73,7 +62,27 @@ impl Interpreter {
                 }
                 
                 None
-            }
+            },
+            Stmt::If(condition, then_branch, else_branch) => {
+                if Interpreter::is_truthy(self.evaluate(condition).unwrap()) {
+                    self.interpret_stmt(then_branch);
+                } else {
+                    self.interpret_stmt(else_branch.unwrap());
+                }
+
+                None
+            },
+            Stmt::Expr(e) => {
+                let f = self.evaluate(e);
+        
+                match f {
+                    Ok(l) => Some(l),
+                    Err(e) => {
+                        Lox::runtime_error(e);
+                        None
+                    }
+                }
+            },
         }
     }
 

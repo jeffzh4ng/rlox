@@ -85,7 +85,8 @@ pub enum Stmt {
     Expr(Box<Expr>),
     Print(Box<Expr>),
     Var(Token, Box<Option<Expr>>),
-    Block(Vec<Stmt>)
+    Block(Vec<Stmt>),
+    If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>)
 }
 
 impl std::fmt::Display for Expr {
@@ -165,6 +166,8 @@ impl Parser {
             self.print_statement()
         } else if self.match_(&vec![TokenType::LeftBrace]) {
             self.block_statement()
+        } else if self.match_(&vec![TokenType::If]) {
+            self.if_statement()
         } else {
             self.expression_statement()
         }
@@ -185,6 +188,33 @@ impl Parser {
         }
     }
 
+    fn block_statement(&mut self) -> Result<Stmt, ParseError> {
+        let mut statements = Vec::new();
+
+        while !self.check(&TokenType::RightBrace) && !self.at_end() {
+            if let Some(s) = self.declaration() {
+                statements.push(s)
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block".to_owned())?;
+        Ok(Stmt::Block(statements))
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(TokenType::LeftBrace, "Expect '(' after if".to_owned())?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightBrace, "Expect ')' after if condition".to_owned())?;
+
+        let then_branch = self.statement()?;
+        if self.match_(&vec![TokenType::Else]) {
+            let else_branch = self.statement()?;
+            Ok(Stmt::If(Box::new(condition), Box::new(then_branch), Some(Box::new(else_branch))))
+        } else {
+            Ok(Stmt::If(Box::new(condition), Box::new(then_branch), None))
+        }
+    }
+
     fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
         let expr = self.expression();
 
@@ -198,19 +228,6 @@ impl Parser {
             },
             Err(e) => Err(e)
         }
-    }
-
-    fn block_statement(&mut self) -> Result<Stmt, ParseError> {
-        let mut statements = Vec::new();
-
-        while !self.check(&TokenType::RightBrace) && !self.at_end() {
-            if let Some(s) = self.declaration() {
-                statements.push(s)
-            }
-        }
-
-        self.consume(TokenType::RightBrace, "Expect '}' after block".to_owned())?;
-        Ok(Stmt::Block(statements))
     }
 
     fn synchronize(&mut self) {
