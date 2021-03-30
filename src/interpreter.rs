@@ -1,24 +1,27 @@
-use crate::{Lox, parser::{Expr, Stmt}, token::{Literal, Token, TokenType}};
+use crate::{Lox, environment::Environment, parser::{Expr, Stmt}, token::{Literal, Token, TokenType}};
 use std::error;
 
-pub struct Interpreter {}
+pub struct Interpreter {
+    environment: Box<Environment>
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter{}
+        Interpreter {
+            environment: Box::new(Environment::new(None))
+        }
     }
 
-    pub fn interpret(&self, stmts: Vec<Box<Stmt>>) {
+    pub fn interpret(&mut self, stmts: Vec<Box<Stmt>>) {
         for s in stmts {
             self.interpret_stmt(s);
         }
     }
 
-
-    pub fn interpret_stmt(&self, expr: Box<Stmt>) -> Option<Literal> { // function has to be method due to weird lazy static error
-        match *expr {
+    pub fn interpret_stmt(&mut self, stmt: Box<Stmt>) -> Option<Literal> { // function has to be method due to weird lazy static error
+        match *stmt {
             Stmt::Expr(e) => {
-                let f = Interpreter::evaluate(e);
+                let f = self.evaluate(e);
         
                 match f {
                     Ok(l) => Some(l),
@@ -29,7 +32,7 @@ impl Interpreter {
                 }
             },
             Stmt::Print(e) => {
-                let f = Interpreter::evaluate(e);
+                let f = self.evaluate(e);
 
                 match f {
                     Ok(l) => { 
@@ -41,29 +44,66 @@ impl Interpreter {
                         None
                     }
                 }
+            },
+            Stmt::Var(name, initializer) => {
+                let mut value = Literal::Nil;
+
+                match *initializer {
+                    Some(e) => {
+                        let f = self.evaluate(Box::new(e));
+
+                        match f {
+                            Ok(l) => { 
+                                value = l;
+                            },
+                            Err(e) => {
+                                Lox::runtime_error(e);
+                            }
+                        };
+                    },
+                    None => {}
+                }
+
+                self.environment.define(name.lexeme, value);
+                None
+            },
+            Stmt::Block(stmts) => {
+                for s in stmts {
+                    self.interpret_stmt(Box::new(s));
+                }
+                
+                None
             }
         }
     }
 
-    fn evaluate(expr: Box<Expr>) -> Result<Literal, RuntimeError> {
+    fn evaluate(&mut self, expr: Box<Expr>) -> Result<Literal, RuntimeError> {
         match *expr {
             Expr::Unary(t, e) => {
-                Interpreter::evaluate_unary(t, e)
+                self.evaluate_unary(t, e)
             },
             Expr::Binary(l, t, r) => {
-                Interpreter::evaluate_binary(l, t, r)
+                self.evaluate_binary(l, t, r)
             },
             Expr::Grouping(g) => {
-                Interpreter::evaluate_grouping(g)
+                self.evaluate_grouping(g)
             },
             Expr::Literal(l) => {
-                Interpreter::evaluate_literal(l)
+                self.evaluate_literal(l)
             },
+            Expr::Var(t) => {
+                self.environment.get(t)
+            },
+            Expr::Assignment(t, expr) => {
+                let value = self.evaluate(expr)?;
+                self.environment.assign(t, value.clone())?;
+                Ok(value)
+            }
         }
     }
 
-    fn evaluate_unary(t: Token, r: Box<Expr>) -> Result<Literal, RuntimeError> {
-        let r = Interpreter::evaluate(r)?;
+    fn evaluate_unary(&mut self, t: Token, r: Box<Expr>) -> Result<Literal, RuntimeError> {
+        let r = self.evaluate(r)?;
     
         match t.token_type {
             TokenType::Bang => {
@@ -81,9 +121,9 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_binary(l: Box<Expr>, t: Token, r: Box<Expr>) -> Result<Literal, RuntimeError> {
-        let l = Interpreter::evaluate(l)?;
-        let r = Interpreter::evaluate(r)?;
+    fn evaluate_binary(&mut self, l: Box<Expr>, t: Token, r: Box<Expr>) -> Result<Literal, RuntimeError> {
+        let l = self.evaluate(l)?;
+        let r = self.evaluate(r)?;
 
         match t.token_type {
             TokenType::Plus => {
@@ -147,11 +187,11 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_grouping(g: Box<Expr>) -> Result<Literal, RuntimeError> {
-        Interpreter::evaluate(g)
+    fn evaluate_grouping(&mut self, g: Box<Expr>) -> Result<Literal, RuntimeError> {
+        self.evaluate(g)
     }
 
-    fn evaluate_literal(l: Literal) -> Result<Literal, RuntimeError> {
+    fn evaluate_literal(&self, l: Literal) -> Result<Literal, RuntimeError> {
         Ok(l)
     }
 

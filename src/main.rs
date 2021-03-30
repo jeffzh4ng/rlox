@@ -2,15 +2,16 @@ mod token;
 mod scanner;
 mod parser;
 mod interpreter;
+mod environment;
 
-use std::{env};
+use std::{env, sync::Mutex};
 use std::process;
 use std::io;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use interpreter::{Interpreter, RuntimeError};
-use token::{Literal, Token, TokenType};
+use token::{Token, TokenType};
 use scanner::Scanner;
 use parser::{ParseError, Parser};
 
@@ -28,7 +29,7 @@ static HAD_ERROR: AtomicBool = AtomicBool::new(false);
 static HAD_RUNTIME_ERROR: AtomicBool = AtomicBool::new(false);
 
 lazy_static! {
-    static ref INTERPRETER: Interpreter = Interpreter::new();
+    static ref INTERPRETER: Mutex<Interpreter> = Mutex::new(Interpreter::new());
 }
 
 
@@ -38,7 +39,7 @@ struct Lox {
 
 impl Lox {
     fn main(&mut self) {
-        let args: Vec<String> = env::args().collect();
+        let _args_: Vec<String> = env::args().collect();
 
         self.run_prompt();
 
@@ -52,7 +53,7 @@ impl Lox {
         // }
     }
 
-    fn run_file(&self, path: &str) -> io::Result<()> {
+    fn _run_file(&self, path: &str) -> io::Result<()> {
         let bytes = fs::read(path).unwrap();
         let string = std::str::from_utf8(&bytes).unwrap().to_owned();
         self.run(string);
@@ -92,7 +93,8 @@ impl Lox {
             return;
         }
 
-        INTERPRETER.interpret(stmts);
+        let mut i = INTERPRETER.lock().unwrap();
+        i.interpret(stmts);
     }
 
     fn error(line: u32, message: String) {

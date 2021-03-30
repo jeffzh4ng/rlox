@@ -77,11 +77,15 @@ pub enum Expr {
     Binary(Box<Expr>, Token, Box<Expr>),
     Grouping(Box<Expr>),
     Literal(Literal),
+    Var(Token),
+    Assignment(Token, Box<Expr>)
 }
 
 pub enum Stmt {
     Expr(Box<Expr>),
-    Print(Box<Expr>)
+    Print(Box<Expr>),
+    Var(Token, Box<Option<Expr>>),
+    Block(Vec<Stmt>)
 }
 
 impl std::fmt::Display for Expr {
@@ -107,8 +111,8 @@ impl Parser {
         let mut statements = Vec::new();
 
         while !self.at_end() {
-            match self.statement() {
-                Some(s) => statements.push(Box::new(s)),
+            match self.declaration() {
+                Some(d) => statements.push(Box::new(d)),
                 None => {}
             }
         }
@@ -116,54 +120,97 @@ impl Parser {
         statements
     }
 
-    fn statement(&mut self) -> Option<Stmt> {
+    fn declaration(&mut self) -> Option<Stmt> {
+        if self.match_(&vec![TokenType::Var]) {
+            match self.var_declaration() {
+                Ok(s) => {
+                    Some(s)
+                },
+                Err(e) => {
+                    self.synchronize();
+                    Lox::parse_error(e);
+                    None
+                }
+            }
+        } else {
+            match self.statement() {
+                Ok(s) => {
+                    Some(s)
+                },
+                Err(e) => {
+                    self.synchronize();
+                    Lox::parse_error(e);
+                    None
+                }
+            }
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume(TokenType::Identifier, "Expect variable name".to_owned())?;
+
+        let mut initializer = None;
+
+        if self.match_(&vec![TokenType::Equal]) {
+            initializer = Some(self.expression()?);
+        }
+        
+        self.consume(TokenType::SemiColon, "Expect ';' after variable declaration".to_owned())?;
+
+        Ok(Stmt::Var(name, Box::new(initializer)))
+    }
+
+    fn statement(&mut self) -> Result<Stmt, ParseError> {
         if self.match_(&vec![TokenType::Print]) {
             self.print_statement()
+        } else if self.match_(&vec![TokenType::LeftBrace]) {
+            self.block_statement()
         } else {
             self.expression_statement()
         }
     }
 
-    fn print_statement(&mut self) -> Option<Stmt> {
+    fn print_statement(&mut self) -> Result<Stmt, ParseError> {
         let value = self.expression();
 
         match value {
             Ok(e) => {
                 let semicolon_exists = self.consume(TokenType::SemiColon, "Expect ';' after value.".to_owned());
                 match semicolon_exists {
-                    Ok(_) => Some(Stmt::Print(Box::new(e))),
-                    Err(e) => {
-                        Lox::parse_error(e);
-                        None
-                    },
+                    Ok(_) => Ok(Stmt::Print(Box::new(e))),
+                    Err(e) => Err(e),
                 }
             },
-            Err(e) => {
-                Lox::parse_error(e);
-                None
-            }
+            Err(e) => Err(e)
         }
     }
 
-    fn expression_statement(&mut self) -> Option<Stmt> {
+    fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
         let expr = self.expression();
 
         match expr {
             Ok(e) => {
                 let semicolon_exists = self.consume(TokenType::SemiColon, "Expect ';' after expression.".to_owned());
                 match semicolon_exists {
-                    Ok(_) => Some(Stmt::Expr(Box::new(e))),
-                    Err(e) => {
-                        Lox::parse_error(e);
-                        None
-                    },
+                    Ok(_) => Ok(Stmt::Expr(Box::new(e))),
+                    Err(e) => Err(e)
                 }
             },
-            Err(e) => {
-                Lox::parse_error(e);
-                None
+            Err(e) => Err(e)
+        }
+    }
+
+    fn block_statement(&mut self) -> Result<Stmt, ParseError> {
+        let mut statements = Vec::new();
+
+        while !self.check(&TokenType::RightBrace) && !self.at_end() {
+            if let Some(s) = self.declaration() {
+                statements.push(s)
             }
         }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block".to_owned())?;
+        Ok(Stmt::Block(statements))
     }
 
     fn synchronize(&mut self) {
@@ -190,7 +237,31 @@ impl Parser {
 
     // ======== OPERATORS ========
     fn expression(&mut self) -> Result<Expr, ParseError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ParseError> {
+        let expr = self.equality()?;
+
+        if self.match_(&vec![TokenType::Equal]) {
+            let equals = self.previous();
+
+            // instead of looping like the other operators, we recurse
+            // since assignment is right-associative. this means parse the
+            // right hand side and wrap it all up in an assignment expression node
+            let value = self.assignment()?;
+
+            match value {
+                Expr::Assignment(t, e) => {
+                    Ok(Expr::Assignment(t, e))
+                },
+                _ => {
+                    Err(ParseError(equals, "Invalid assignment target.".to_owned()))
+                }
+            }
+        } else {
+            Ok(expr)
+        }
     }
 
     fn equality(&mut self) -> Result<Expr, ParseError> {
@@ -271,6 +342,10 @@ impl Parser {
             return Ok(Expr::Literal(self.previous().literal.ok_or_else(|| ParseError(self.peek().clone(), "".to_owned())).unwrap()));
         }
 
+        if self.match_(&vec![TokenType::Identifier]) {
+            return Ok(Expr::Var(self.previous()))
+        }
+
         if self.match_(&vec![TokenType::LeftParen]) {
             let expr = self.expression()?;
             let right_paren_exists = self.consume(TokenType::RightParen, "Expect ')' after expression.".to_owned());
@@ -327,10 +402,9 @@ impl Parser {
         false
     }
 
-    fn consume(&mut self, token_type: TokenType, message: String) -> Result<(), ParseError> {
+    fn consume(&mut self, token_type: TokenType, message: String) -> Result<Token, ParseError> {
         if self.check(&token_type) {
-            self.advance();
-            Ok(())
+            Ok(self.advance())
         } else {
             Err(ParseError(self.peek().clone(), message))
         }
