@@ -4,6 +4,14 @@ use lazy_static::lazy_static;
 use super::token::{Token, TokenType, Literal};
 use std::collections::HashMap;
 
+// ======== LEXICAL GRAMMAR ========
+// NUMBER         → DIGIT+ ( "." DIGIT+ )? ;
+// STRING         → "\"" <any char except "\"">* "\"" ;
+// IDENTIFIER     → ALPHA ( ALPHA | DIGIT )* ;
+// ALPHA          → "a" ... "z" | "A" ... "Z" | "_" ;
+// DIGIT          → "0" ... "9" ;
+// =================================
+
 lazy_static! {
     static ref KEYWORDS: HashMap<String, TokenType> = {
         let mut m = HashMap::new();
